@@ -1,13 +1,13 @@
 [package]
-name = "xx-proc-macro-support"
+name = "xx-macros"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 convert_case = "0.6.0"
-proc-macro2 = "1.0.84"
+proc-macro2 = "1.0.86"
 quote = "1.0.36"
-syn = { version = "2.0.66", features = ["full", "visit-mut"] }
+syn = { version = "2.0.69", features = ["full", "visit-mut"] }
 xx-macro-support = { git = "https://github.com/davidzeng0/xx-macro-support.git" }
 
 [lib]
@@ -105,3 +105,4 @@ flat_map_option = "warn"
 option_as_ref_cloned = "warn"
 option_option = "warn"
 todo = "warn"
+wildcard_imports = "warn"

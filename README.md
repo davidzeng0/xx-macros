@@ -1,3 +1,3 @@
-# xx-proc-macro-support
+# xx-macros
 
-Common proc macro utilities
+Common macros
