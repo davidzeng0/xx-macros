@@ -1,5 +1,3 @@
-#![allow(clippy::wildcard_imports)]
-
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream;
 use quote::quote;

@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use xx_macro_support::impls::ExprExt;
+
 use super::*;
 
 #[derive(Default)]
@@ -59,17 +61,13 @@ impl Parse for Options {
 }
 
 fn get_string(expr: &Expr, set: &mut HashSet<String>) -> Result<String> {
-	let Expr::Lit(ExprLit { lit: Lit::Str(str), .. }) = expr else {
-		return Err(Error::new_spanned(expr, "Expected a string"));
-	};
+	let str = expr.as_lit_str()?;
 
-	let value = str.value();
-
-	if !set.insert(value.clone()) {
+	if !set.insert(str.value()) {
 		return Err(Error::new_spanned(str, "Duplicate string"));
 	}
 
-	Ok(value)
+	Ok(str.value())
 }
 
 fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
