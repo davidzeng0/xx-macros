@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use xx_macro_support::impls::ExprExt;
-
 use super::*;
 
 #[derive(Default)]
@@ -70,8 +68,8 @@ fn get_string(expr: &Expr, set: &mut HashSet<String>) -> Result<String> {
 	Ok(str.value())
 }
 
-fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
-	let options = parse2::<Options>(args)?;
+pub fn strings(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
+	let options = parse2::<Options>(attr)?;
 	let mut item = parse2::<ItemEnum>(item)?;
 	let mut variants = Vec::new();
 	let mut alts = Vec::new();
@@ -79,7 +77,7 @@ fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
 	let mut set = HashSet::new();
 
 	for variant in &mut item.variants {
-		if remove_attr_path(&mut variant.attrs, "omit").is_some() {
+		if variant.attrs.remove_path("omit").is_some() {
 			continue;
 		}
 
@@ -87,13 +85,10 @@ fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
 			return Err(Error::new_spanned(variant, "Fields not allowed"));
 		}
 
-		let string = match remove_attr_name_value(&mut variant.attrs, "string") {
+		let string = match variant.attrs.remove_name_value("string") {
 			Some(attr) => get_string(&attr.value, &mut set)?,
+			None if !options.defaults => continue,
 			None => {
-				if !options.defaults {
-					continue;
-				}
-
 				let mut result = variant.ident.to_string();
 
 				if let Some(case) = options.case {
@@ -108,7 +103,7 @@ fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
 			}
 		};
 
-		while let Some(alt) = remove_attr_name_value(&mut variant.attrs, "alt") {
+		while let Some(alt) = variant.attrs.remove_name_value("alt") {
 			let variant = &variant.ident;
 			let str = get_string(&alt.value, &mut set)?;
 
@@ -176,8 +171,4 @@ fn expand(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
 			}
 		}
 	})
-}
-
-pub fn strings(attr: TokenStream, item: TokenStream) -> TokenStream {
-	try_expand(|| expand(attr, item))
 }
