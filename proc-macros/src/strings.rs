@@ -1,4 +1,8 @@
 use std::collections::HashSet;
+use std::mem::replace;
+
+use convert_case::{Case, Casing};
+use syn::spanned::Spanned;
 
 use super::*;
 
@@ -11,11 +15,9 @@ struct Options {
 
 impl Options {
 	fn set_bool(opt: &mut bool, arg: &Ident) -> Result<()> {
-		if *opt {
+		if replace(opt, true) {
 			Err(Error::new_spanned(arg, "Duplicate option"))
 		} else {
-			*opt = true;
-
 			Ok(())
 		}
 	}
@@ -58,17 +60,17 @@ impl Parse for Options {
 	}
 }
 
-fn get_string(expr: &Expr, set: &mut HashSet<String>) -> Result<String> {
-	let str = expr.as_lit_str()?;
+pub fn strings(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
+	fn get_string(expr: &Expr, set: &mut HashSet<String>) -> Result<String> {
+		let str = expr.as_lit_str()?;
 
-	if !set.insert(str.value()) {
-		return Err(Error::new_spanned(str, "Duplicate string"));
+		if !set.insert(str.value()) {
+			return Err(Error::new_spanned(str, "Duplicate string"));
+		}
+
+		Ok(str.value())
 	}
 
-	Ok(str.value())
-}
-
-pub fn strings(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 	let options = parse2::<Options>(attr)?;
 	let mut item = parse2::<ItemEnum>(item)?;
 	let mut variants = Vec::new();
@@ -77,7 +79,14 @@ pub fn strings(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 	let mut set = HashSet::new();
 
 	for variant in &mut item.variants {
-		if variant.attrs.remove_path("omit").is_some() {
+		if let Some(attr) = variant.attrs.remove_path("omit") {
+			if !options.defaults {
+				/* omit attr isn't necessary, push a warning */
+				variant.attrs.push(parse_quote_spanned! { attr.span() =>
+					#[expect(deprecated_safe)]
+				});
+			}
+
 			continue;
 		}
 
@@ -85,22 +94,22 @@ pub fn strings(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 			return Err(Error::new_spanned(variant, "Fields not allowed"));
 		}
 
-		let string = match variant.attrs.remove_name_value("string") {
-			Some(attr) => get_string(&attr.value, &mut set)?,
-			None if !options.defaults => continue,
-			None => {
-				let mut result = variant.ident.to_string();
+		let string = if let Some(attr) = variant.attrs.remove_name_value("string") {
+			get_string(&attr.value, &mut set)?
+		} else if options.defaults {
+			let mut result = variant.ident.to_string();
 
-				if let Some(case) = options.case {
-					result = result.to_case(case);
-				}
-
-				if !set.insert(result.clone()) {
-					return Err(Error::new_spanned(&variant.ident, "Duplicate string"));
-				}
-
-				result
+			if let Some(case) = options.case {
+				result = result.to_case(case);
 			}
+
+			if !set.insert(result.clone()) {
+				return Err(Error::new_spanned(&variant.ident, "Duplicate string"));
+			}
+
+			result
+		} else {
+			continue;
 		};
 
 		while let Some(alt) = variant.attrs.remove_name_value("alt") {
@@ -115,36 +124,41 @@ pub fn strings(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 	}
 
 	let name = &item.ident;
-	let mut display = None;
-	let as_str = if variants.len() == item.variants.len() {
-		if options.display {
-			display = Some(quote! {
-				impl ::std::fmt::Display for #name {
-					fn fmt(&self, fmt: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-						fmt.write_str(self.as_str())
+	let (as_str, display) = if variants.len() == item.variants.len() {
+		(
+			quote! {
+				pub fn as_str(&self) -> &'static str {
+					match self {
+						#(Self::#variants => #strings),*
 					}
 				}
-			});
-		}
-
-		quote! {
-			pub fn as_str(&self) -> &'static str {
-				match self {
-					#(Self::#variants => #strings),*
-				}
+			},
+			if options.display {
+				Some(quote! {
+					impl ::std::fmt::Display for #name {
+						fn fmt(&self, fmt: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+							fmt.write_str(self.as_str())
+						}
+					}
+				})
+			} else {
+				None
 			}
-		}
+		)
 	} else {
-		quote! {
-			pub fn as_str(&self) -> ::std::option::Option<&'static str> {
-				use ::std::option::Option::*;
+		(
+			quote! {
+				pub fn as_str(&self) -> ::std::option::Option<&'static str> {
+					use ::std::option::Option::*;
 
-				match self {
-					#(Self::#variants => Some(#strings),)*
-					_ => None
+					match self {
+						#(Self::#variants => Some(#strings),)*
+						_ => None
+					}
 				}
-			}
-		}
+			},
+			None
+		)
 	};
 
 	Ok(quote! {
