@@ -52,8 +52,13 @@ impl Parse for Options {
 				"display" => this.set_display(arg)?,
 				"lowercase" => this.set_case(arg, Case::Flat)?,
 				"snake" => this.set_case(arg, Case::Snake)?,
+				"kebab" => this.set_case(arg, Case::Kebab)?,
 				_ => return Err(Error::new_spanned(arg, "Unknown option"))
 			}
+		}
+
+		if this.case.is_some() && !this.defaults {
+			return Err(Error::new_spanned(args, "Case without default"));
 		}
 
 		Ok(this)
